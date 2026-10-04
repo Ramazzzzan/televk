@@ -1,0 +1,21 @@
+{
+  "TG_OWNER_ID": 123456789,
+  "TG_GROUP_ID": -1001234567890,
+  "TG_BOT_TOKEN_FILE": "secrets/telegram.token",
+  "VK_ACCESS_TOKEN_FILE": "secrets/vk.token",
+  "STATE_DIR": "state",
+  "TG_PROXY": "",
+  "VK_PROXY": "",
+  "VK_API_VERSION": "5.199",
+  "VK_POLL_SECONDS": 2.0,
+  "TG_SEND_INTERVAL": 3.1,
+  "VK_API_INTERVAL": 0.36,
+  "WORKERS": 4,
+  "MAX_PENDING": 20000,
+  "MAX_FILE_MB": 50,
+  "MIN_FREE_MB": 256,
+  "MAX_DB_MB": 2048,
+  "RETENTION_DAYS": 30,
+  "UPDATE_CHECK_HOURS": 168,
+  "TIMEZONE": "Europe/Amsterdam"
+}

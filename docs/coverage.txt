@@ -1,0 +1,13 @@
+Name                 Stmts   Miss Branch BrPart  Cover
+------------------------------------------------------
+televk/__init__.py       1      0      0      0   100%
+televk/__main__.py     167     57     50      7    59%
+televk/api.py          193     87     82     14    49%
+televk/bridge.py       611    222    268     63    60%
+televk/common.py       130      7     42      8    91%
+televk/media.py        124     18     54     15    81%
+televk/planner.py      109     16     64     16    82%
+televk/store.py        152      7     36      7    93%
+televk/updates.py       97     36     34      4    56%
+------------------------------------------------------
+TOTAL                 1584    450    630    134    67%

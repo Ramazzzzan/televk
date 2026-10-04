@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+config.json
+secrets/
+state/
+*.sqlite3*
+*.token
+*.log
+.env

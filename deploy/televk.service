@@ -1,0 +1,34 @@
+[Unit]
+Description=TeleVK private VK to Telegram bridge
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=televk
+Group=televk
+WorkingDirectory=/opt/televk
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStartPre=/opt/televk/.venv/bin/python -m televk --config /etc/televk/config.json check
+ExecStart=/opt/televk/.venv/bin/python -m televk --config /etc/televk/config.json run
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=240
+TimeoutStopSec=30
+WatchdogSec=60
+UMask=0077
+StateDirectory=televk
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/televk
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

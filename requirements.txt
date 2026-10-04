@@ -1,0 +1,2 @@
+# Runtime dependency. Use constraints.txt for the release's resolved versions.
+httpx[socks]==0.28.1

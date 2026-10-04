@@ -1,0 +1,38 @@
+name: TeleVK tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Verify offline wheelhouse
+        shell: bash
+        run: |
+          test -s wheelhouse/EXPECTED_SHA256SUMS
+          test -s wheelhouse/SHA256SUMS
+          cmp wheelhouse/EXPECTED_SHA256SUMS wheelhouse/SHA256SUMS
+          cd wheelhouse
+          sha256sum -c EXPECTED_SHA256SUMS
+          test "$(find . -maxdepth 1 -name '*.whl' | wc -l)" -eq "$(grep -Ec '^[A-Za-z0-9_.-]+==' ../constraints.txt)"
+      - name: Install from wheelhouse only
+        run: |
+          python -m pip install --disable-pip-version-check --no-index --find-links=wheelhouse -r requirements.txt -c constraints.txt
+          python -m pip check
+      - name: Test
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s tests -v
+          python -m compileall -q televk tests
