@@ -23,6 +23,19 @@ from .common import Config, Permanent, Retry, Uncertain
 from .store import Store
 
 
+def validate_secret_values(tg_token: str, vk_token: str) -> None:
+    if tg_token.lower().startswith("bot"):
+        raise Permanent("Telegram bot token: do not include the 'bot' prefix")
+    if tg_token.count(":") != 1:
+        raise Permanent("Telegram bot token must contain exactly one ':'")
+    bot_id, bot_secret = tg_token.split(":", 1)
+    if not bot_id.isdigit() or not bot_secret or any(ch.isspace() for ch in tg_token):
+        raise Permanent("Telegram bot token has invalid format")
+    if (not vk_token or vk_token.lower() in {"none", "null", "n/a", "na"}
+            or any(ch.isspace() for ch in vk_token)):
+        raise Permanent("VK access token is empty, a placeholder, or contains whitespace")
+
+
 def initialize(path: Path) -> None:
     path = path.resolve()
     if path.exists():
@@ -37,8 +50,7 @@ def initialize(path: Path) -> None:
     data = {"TG_OWNER_ID": owner, "TG_GROUP_ID": group, "TG_BOT_TOKEN_FILE": "secrets/telegram.token",
             "VK_ACCESS_TOKEN_FILE": "secrets/vk.token", "TG_PROXY": proxy, "STATE_DIR": state}
     Config(**data, _base=path.parent).validate()
-    if not tg_token or not vk_token:
-        raise Permanent("Tokens must not be empty")
+    validate_secret_values(tg_token, vk_token)
     directory = path.parent / "secrets"
     directory.mkdir(exist_ok=True, mode=0o700)
     for name, value in (("telegram.token", tg_token), ("vk.token", vk_token)):
@@ -132,8 +144,9 @@ def main() -> int:
             initialize(Path(args.config))
             return 0
         c = Config.load(args.config)
-        c.secret("TG_BOT_TOKEN_FILE")
-        c.secret("VK_ACCESS_TOKEN_FILE")
+        tg_token = c.secret("TG_BOT_TOKEN_FILE")
+        vk_token = c.secret("VK_ACCESS_TOKEN_FILE")
+        validate_secret_values(tg_token, vk_token)
         c.state.mkdir(parents=True, exist_ok=True, mode=0o700)
         lock = (c.state / "process.lock").open("a+")
         try:

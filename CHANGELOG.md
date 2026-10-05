@@ -1,5 +1,11 @@
 # Изменения
 
+## Pilot hardening - 2026-10-05
+
+Первый реальный пилот подтвердил Telegram/VK preflight, чтение личных диалогов VK, запись теста в «Избранное», запуск systemd и доставку новых текстовых сообщений VK → Telegram через SOCKS-прокси.
+
+README дополнен community-путём получения VK user token через `BigDrugs/vk-notify`. `init` и `check` теперь отбрасывают `none`/placeholder вместо VK-токена и явно некорректный Telegram Bot token (например, с лишним `:` или префиксом `bot`). Добавлены регрессионные CLI-тесты.
+
 ## 0.1.1 — 2026-10-04
 
 Переведена установка на GitHub-first/offline-модель: зависимости скачиваются на ПК в `wheelhouse/`, сверяются с закреплённым SHA-256 release-манифестом, коммитятся в репозиторий и на HTPC устанавливаются через `pip --no-index`. Добавлены PowerShell/bash-скрипты подготовки wheelhouse, GitHub Actions тест и безопасный `install.sh --resume` для прерванной первой установки 0.1.0.

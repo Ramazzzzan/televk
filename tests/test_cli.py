@@ -34,7 +34,7 @@ class TestLocalCLI(unittest.TestCase):
 
     def init_config(self):
         with patch('builtins.input', side_effect=['7', '-100123', '', 'state']), \
-             patch('getpass.getpass', side_effect=['FAKE_TG_SECRET', 'FAKE_VK_SECRET']):
+             patch('getpass.getpass', side_effect=['123456:FAKE_TG_SECRET', 'vk1.a.FAKE_VK_SECRET']):
             return self.invoke('init')
 
     def test_init_secrets_are_private_and_not_printed(self):
@@ -52,6 +52,22 @@ class TestLocalCLI(unittest.TestCase):
         code, out = self.invoke('init')
         self.assertEqual(code, 2)
         self.assertEqual(self.config.read_bytes(), before)
+
+    def test_init_rejects_malformed_telegram_token(self):
+        with patch('builtins.input', side_effect=['7', '-100123', '', 'state']), \
+             patch('getpass.getpass', side_effect=['123:bad:extra', 'vk1.a.FAKE_VK_SECRET']):
+            code, out = self.invoke('init')
+        self.assertEqual(code, 2)
+        self.assertIn("exactly one ':'", out)
+        self.assertFalse(self.config.exists())
+
+    def test_init_rejects_placeholder_vk_token(self):
+        with patch('builtins.input', side_effect=['7', '-100123', '', 'state']), \
+             patch('getpass.getpass', side_effect=['123456:FAKE_TG_SECRET', 'none']):
+            code, out = self.invoke('init')
+        self.assertEqual(code, 2)
+        self.assertIn('placeholder', out)
+        self.assertFalse(self.config.exists())
 
     def test_offline_check(self):
         self.init_config()
