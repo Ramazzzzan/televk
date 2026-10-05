@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
-from .common import Permanent, Retry
+from .common import Permanent, Retry, subprocess_env
 
 BLOCKED_TRANSITION = [ipaddress.ip_network(n) for n in
                       ("64:ff9b::/96", "64:ff9b:1::/48", "2002::/16", "2001::/32")]

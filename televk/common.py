@@ -30,6 +30,16 @@ class AccessDenied(Permanent):
     pass
 
 
+def subprocess_env() -> dict[str, str]:
+    """Environment for helper processes that must not impersonate this systemd service."""
+    env = os.environ.copy()
+    env.pop("NOTIFY_SOCKET", None)
+    for key in tuple(env):
+        if key.startswith("WATCHDOG_"):
+            env.pop(key, None)
+    return env
+
+
 class VKError(Permanent):
     def __init__(self, code: int, method: str):
         super().__init__(f"VK {method}: error {code}")

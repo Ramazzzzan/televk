@@ -8,7 +8,7 @@ import sqlite3
 
 import httpx
 
-from .common import Config
+from .common import Config, subprocess_env
 
 # Update discovery deliberately uses GitHub only. The HTPC does not need PyPI access.
 PACKAGE_REPOS = {
@@ -110,7 +110,10 @@ async def check_updates(client: httpx.AsyncClient, config: Config) -> dict:
     ):
         try:
             proc = await asyncio.create_subprocess_exec(
-                executable, "--version", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+                executable, "--version",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                env=subprocess_env(),
             )
             try:
                 output, _ = await asyncio.wait_for(proc.communicate(), 5)
