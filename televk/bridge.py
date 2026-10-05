@@ -33,6 +33,7 @@ HELP = """TeleVK — VK ↔ Telegram
 /mute [THREAD_ID] | /unmute [THREAD_ID] | /muted
 /dlq — последние ошибки и неопределённые отправки
 /retry_dlq ID [force] — повтор; force может создать дубликат
+/clear_dlq — убрать все dead/uncertain из DLQ без повтора
 /updates — проверить версии компонентов, ничего не устанавливать
 /resync — сверить сообщения после последнего успешного чтения
 /help
@@ -472,6 +473,11 @@ class Bridge:
             if not args:
                 raise Permanent("/retry_dlq ID [force]; массовый повтор отключён")
             result = self.s.retry(int(args[0]), len(args) > 1 and args[1] == "force")
+        elif cmd == "/clear_dlq":
+            if args:
+                raise Permanent("/clear_dlq не принимает аргументы")
+            cleared = self.s.clear_dlq()
+            result = f"DLQ очищен: {cleared}. Записи помечены suppressed и будут удалены штатной retention-очисткой."
         elif cmd == "/resync":
             await self.resync()
             result = "Сверка запущена. Она не отмечает переписку прочитанной."

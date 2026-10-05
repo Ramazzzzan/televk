@@ -99,6 +99,29 @@ class TestStore(Harness, unittest.TestCase):
         self.s.retry(jid, True)
         self.assertEqual(self.s.claim()["id"], jid)
 
+    def test_clear_dlq_suppresses_dead_and_uncertain_only(self):
+        dead = self.s.add_job("dead", "tg_file", {}, peer=1)
+        uncertain = self.s.add_job("uncertain", "vk_send", {}, peer=2)
+        pending = self.s.add_job("pending", "tg_text", {}, peer=3)
+        self.s.finish(dead, "dead", "bad file")
+        self.s.finish(uncertain, "uncertain", "unknown")
+        self.assertEqual(self.s.clear_dlq(), 2)
+        states = {
+            row["key"]: row["state"]
+            for row in self.s.db.execute("SELECT key,state FROM jobs")
+        }
+        self.assertEqual(states["dead"], "suppressed")
+        self.assertEqual(states["uncertain"], "suppressed")
+        self.assertEqual(states["pending"], "pending")
+        rid = self.s.db.execute(
+            "SELECT random_id FROM jobs WHERE id=?", (uncertain,)
+        ).fetchone()[0]
+        self.assertIsNotNone(
+            self.s.db.execute(
+                "SELECT 1 FROM echoes WHERE peer=2 AND random_id=?", (rid,)
+            ).fetchone()
+        )
+
     def test_interrupted_effect_becomes_uncertain(self):
         jid = self.s.add_job("x", "tg_text", {})
         self.s.claim()

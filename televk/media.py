@@ -140,6 +140,8 @@ async def download_public(url: str, dest: Path, limit: int, min_free: int) -> No
                 raise Permanent(f"Unexpected attachment response (HTTP {code})")
             if "content-length" in values and int(values["content-length"]) != size:
                 raise Retry("Attachment Content-Length mismatch")
+            if size == 0:
+                raise Permanent("Attachment is empty")
             return
         except (ValueError, IndexError):
             raise Permanent("Malformed attachment response headers") from None

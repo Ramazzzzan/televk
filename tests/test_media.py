@@ -74,6 +74,10 @@ class TestDownloader(unittest.IsolatedAsyncioTestCase):
             await self.run_download([(b'HTTP/2 200\r\n\r\n', b'ABCDE', 0)], limit=4)
         self.assertEqual(self.processes[0].returncode, -9)
 
+    async def test_empty_attachment_is_permanent(self):
+        with self.assertRaisesRegex(Permanent, "empty"):
+            await self.run_download([(b'HTTP/2 200\r\ncontent-length: 0\r\n\r\n', b'', 0)])
+
     async def test_incomplete_file_is_retryable(self):
         with self.assertRaises(Retry):
             await self.run_download([(b'HTTP/2 200\r\ncontent-length: 5\r\n\r\n', b'ABC', 0)])

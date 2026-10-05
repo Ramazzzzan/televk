@@ -214,6 +214,19 @@ class Store:
             # Keep random_id and already-completed parts unchanged.
         return "Retry scheduled; already-delivered parts are not replayed."
 
+    def clear_dlq(self) -> int:
+        # Dismiss DLQ jobs but retain audit rows until normal cleanup.
+        with self.tx():
+            count = self.db.execute(
+                "SELECT COUNT(*) FROM jobs WHERE state IN ('dead','uncertain')"
+            ).fetchone()[0]
+            self.db.execute(
+                "UPDATE jobs SET state='suppressed',effect=0,updated=? "
+                "WHERE state IN ('dead','uncertain')",
+                (time.time(),),
+            )
+        return int(count)
+
     def backlog(self) -> int:
         return self.db.execute("SELECT COUNT(*) FROM jobs WHERE state IN ('pending','running')").fetchone()[0] + self.db.execute("SELECT COUNT(*) FROM inbox WHERE processed=0").fetchone()[0]
 
