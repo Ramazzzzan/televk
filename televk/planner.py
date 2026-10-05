@@ -7,6 +7,36 @@ from .common import Permanent, safe_name, split_text
 from .store import Store
 
 
+def needs_hydration(message: dict) -> bool:
+    # Long Poll can carry attachment stubs; fetch the full message before planning media.
+    attachments = message.get("attachments")
+    if attachments is not None and not isinstance(attachments, list):
+        return True
+    attachments = attachments or []
+    for attachment in attachments:
+        if not isinstance(attachment, dict):
+            continue
+        kind = attachment.get("type", "")
+        obj = attachment.get(kind) or {}
+        if kind == "photo":
+            sizes = obj.get("sizes") or []
+            orig = obj.get("orig_photo") or {}
+            has_url = any(isinstance(size, dict) and size.get("url") for size in sizes)
+            if isinstance(orig, dict) and orig.get("url"):
+                has_url = True
+            if not has_url:
+                return True
+        elif kind == "doc" and not obj.get("url"):
+            return True
+    # A completely empty live object may be a media-only Long Poll stub.
+    return not attachments and not any((
+        message.get("text"),
+        message.get("action"),
+        message.get("fwd_messages"),
+        message.get("geo"),
+    ))
+
+
 def message_parts(message: dict, store: Store, tz: str) -> tuple[str, list[dict]]:
     """Unknown fields/types are visible; never discard a supported text payload."""
     files, notes = [], []

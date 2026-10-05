@@ -16,7 +16,7 @@ from televk.api import Telegram, VK, request_json
 from televk.bridge import Bridge
 from televk.common import Config, Permanent, RateGate, Retry, Uncertain, VKError, authorized, safe_name, split_text
 from televk.media import public_ip, validate_url
-from televk.planner import message_parts, plan_vk, tg_payload
+from televk.planner import message_parts, needs_hydration, plan_vk, tg_payload
 from televk.store import Store
 from televk.updates import important_update, stable_version, version_from_tag, check_updates
 
@@ -245,6 +245,15 @@ class TestPlanner(Harness, unittest.TestCase):
         _, files = message_parts(m, self.s, "UTC")
         self.assertEqual([x["kind"] for x in files], ["photo", "document"])
         self.assertEqual(files[0]["url"], "https://a/large")
+        self.assertFalse(needs_hydration(m))
+
+    def test_incomplete_photo_or_doc_needs_hydration(self):
+        photo = vk_message(text="", attachments=[{"type": "photo", "photo": {"id": 1}}])
+        doc = vk_message(text="", attachments=[{"type": "doc", "doc": {"id": 2}}])
+        empty = vk_message(text="", attachments=[])
+        self.assertTrue(needs_hydration(photo))
+        self.assertTrue(needs_hydration(doc))
+        self.assertTrue(needs_hydration(empty))
 
     def test_forwarded_text_and_document(self):
         _, files = message_parts(vk_message(fwd_messages=[vk_message(text="nested", attachments=[{"type": "doc", "doc": {"url": "https://example.com/f"}}])]), self.s, "UTC")
@@ -309,10 +318,12 @@ class FakeTG:
     bot_id = 999
     def __init__(self):
         self.sent = []
+        self.calls = []
         self.gate = RateGate(0)
         self.counter = 100
         self.topics = 0
     async def call(self, method, **params):
+        self.calls.append((method, dict(params)))
         if method == "createForumTopic":
             self.topics += 1
             return {"message_thread_id": 55 + self.topics}
@@ -331,6 +342,7 @@ class FakeVK:
         self.calls, self.reads = [], []
         self.all_history = []
         self.send_error = None
+        self.resolved = {}
     async def call(self, method, **params):
         self.calls.append((method, params))
         if method == "messages.send":
@@ -344,7 +356,7 @@ class FakeVK:
     async def history(self, peer, anchor=0, count=200):
         rows = [m for m in self.all_history if not anchor or m["id"] <= anchor]
         return {"count": len(rows), "items": rows[:count]}
-    async def resolve(self, *args, **kwargs): return {}
+    async def resolve(self, *args, **kwargs): return dict(self.resolved)
     async def upload(self, *args, **kwargs): return "doc7_100"
 
 
@@ -363,6 +375,38 @@ class TestBridge(Harness, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.tg.sent), 1)
         self.assertEqual(self.vk.reads, [])
         self.assertEqual(self.s.tg_link(101, 42)["cmid"], 1)
+
+    async def test_live_photo_stub_is_hydrated_before_planning(self):
+        stub = vk_message(text="", attachments=[{"type": "photo", "photo": {"id": 1}}])
+        self.vk.resolved = vk_message(text="", attachments=[{"type": "photo", "photo": {"id": 1, "sizes": [
+            {"url": "https://example.com/full.jpg", "width": 1000, "height": 800}
+        ]}}])
+        hydrated = await self.b.hydrate_vk_message(stub)
+        _, files = message_parts(hydrated, self.s, "UTC")
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0]["url"], "https://example.com/full.jpg")
+
+    async def test_unbound_topic_warning_is_emitted_once(self):
+        first = tg_message(mid=501, message_thread_id=999, text="one")
+        second = tg_message(mid=502, message_thread_id=999, text="two")
+        self.b.plan_telegram("u1", {"message": first})
+        self.b.plan_telegram("u2", {"message": second})
+        self.assertEqual(
+            self.s.db.execute("SELECT COUNT(*) FROM jobs WHERE kind='notice'").fetchone()[0],
+            1,
+        )
+
+    async def test_successful_vk_send_sets_lightning_reaction_without_success_notice(self):
+        self.b.plan_telegram("r1", {"message": tg_message(mid=600, text="out")})
+        await self.b.dispatch(self.s.claim())
+        reactions = [(method, params) for method, params in self.tg.calls if method == "setMessageReaction"]
+        self.assertEqual(len(reactions), 1)
+        self.assertEqual(reactions[0][1]["message_id"], 600)
+        self.assertEqual(reactions[0][1]["reaction"], [{"type": "emoji", "emoji": "⚡"}])
+        notices = [
+            row[0] for row in self.s.db.execute("SELECT payload FROM jobs WHERE kind='notice'").fetchall()
+        ]
+        self.assertFalse(any("VK подтвердил приём сообщения" in payload for payload in notices))
 
     async def test_text_survives_document_failure(self):
         m = vk_message(attachments=[{"type": "doc", "doc": {"url": "https://example.com/a"}}])

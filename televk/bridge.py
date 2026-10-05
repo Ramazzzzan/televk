@@ -17,7 +17,7 @@ from . import __version__
 from .api import Telegram, VK
 from .common import AccessDenied, Config, Permanent, Retry, Uncertain, VKError, authorized, dumps, split_text
 from .media import disk_check, download_public
-from .planner import message_parts, plan_vk, tg_payload
+from .planner import message_parts, needs_hydration, plan_vk, tg_payload
 from .store import Store
 
 LOG = logging.getLogger("televk")
@@ -160,6 +160,25 @@ class Bridge:
                 self.notify(f"topic-uncertain:{peer}", f"Создание темы для VK {peer}: результат неизвестен. Проверь группу. В созданной теме выполни /bind {peer}; если темы нет, создай вручную и привяжи.")
                 raise Retry("Bind the VK conversation to a topic after ambiguous creation", 60) from None
 
+    async def hydrate_vk_message(self, message: dict) -> dict:
+        if not needs_hydration(message):
+            return message
+        peer = int(message.get("peer_id", 0))
+        mid = int(message.get("id", 0))
+        cmid = int(message.get("conversation_message_id", 0))
+        try:
+            if mid:
+                full = await self.vk.resolve(peer, mid=mid)
+            elif cmid:
+                full = await self.vk.resolve(peer, cmid=cmid)
+            else:
+                return message
+        except Permanent as exc:
+            # Do not stop text delivery for a permanently unavailable/deleted media object.
+            LOG.warning("VK message hydration skipped for peer %s: %s", peer, exc)
+            return message
+        return {**message, **full} if full else message
+
     async def poll_vk(self) -> None:
         while not self.stop.is_set():
             try:
@@ -176,7 +195,8 @@ class Bridge:
                         self.s.set("connected_at", connected)
                 response = await self.vk.changes(cursor)
                 items, updated = self.validate_changes(response, cursor)
-                self.s.ingest_vk_batch(items, updated, response)
+                hydrated = [await self.hydrate_vk_message(message) for message in items]
+                self.s.ingest_vk_batch(hydrated, updated, response)
                 if not response.get("more"):
                     await asyncio.sleep(self.c.VK_POLL_SECONDS)
             except VKError as exc:
@@ -250,7 +270,10 @@ class Bridge:
             return
         route = self.s.route(thread=thread) if thread else None
         if not route:
-            self.notify(f"no-route:{key}", "Тема не привязана к VK. Используй /chat PEER_ID в General или /bind PEER_ID в этой теме.", thread, m["message_id"])
+            marker = f"no_route_warned:{thread}"
+            if not self.s.get(marker):
+                self.s.set(marker, True)
+                self.notify(f"no-route:{thread}", "Тема не привязана к VK. Используй /chat PEER_ID в General или /bind PEER_ID в этой теме.", thread, m["message_id"])
             return
         try:
             data = tg_payload(m, self.s, route["peer"])
@@ -528,6 +551,19 @@ class Bridge:
             if path:
                 path.unlink(missing_ok=True)
 
+    async def react_success(self, tg_message_id: int) -> None:
+        # Best-effort acknowledgement: a cosmetic reaction must never affect VK delivery state.
+        try:
+            await self.tg.call(
+                "setMessageReaction",
+                chat_id=self.c.TG_GROUP_ID,
+                message_id=tg_message_id,
+                reaction=[{"type": "emoji", "emoji": "⚡"}],
+                is_big=False,
+            )
+        except (Retry, Permanent, Uncertain):
+            LOG.warning("Could not set Telegram success reaction for message %s", tg_message_id)
+
     async def deliver_vk(self, job: dict, data: dict) -> None:
         peer, jid = job["peer"], job["id"]
         if self.s.get("vk_paused"):
@@ -568,7 +604,15 @@ class Bridge:
                     self.s.finish(jid)
                     if reply.get("incoming"):
                         self.s.add_job(f"read-after:{jid}", "vk_read", {**reply, "thread": data.get("thread", 0), "ack": False}, peer=peer, lane="vk_read", priority=-2)
-                    self.notify(f"sent:{jid}", f"✓ VK подтвердил приём сообщения #{mid}." + (" Ответ передан текстовой цитатой, отметка прочтения не менялась." if data.get("reply_unmapped") else ""), data.get("thread", 0), data["tg"], priority=2)
+                if data.get("reply_unmapped"):
+                    self.notify(
+                        f"reply-unmapped:{jid}",
+                        "Ответ передан в VK текстовой цитатой; отметка прочтения не менялась.",
+                        data.get("thread", 0),
+                        data["tg"],
+                        priority=2,
+                    )
+                await self.react_success(int(data["tg"]))
             finally:
                 if path:
                     path.unlink(missing_ok=True)

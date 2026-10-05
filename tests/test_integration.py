@@ -97,6 +97,9 @@ class TestServiceCycle(unittest.IsolatedAsyncioTestCase):
                     'message_thread_id': 55, 'text': 'INTEGRATION: мой ответ',
                     'reply_to_message': {'message_id': self.received_text_id}}}]
                 self.reply_update_returned = True
+        elif method == 'setMessageReaction':
+            self.telegram_sends.append((method, form, request.content))
+            result = True
         elif method in {'sendMessage', 'sendDocument', 'sendPhoto'}:
             self.telegram_message_id += 1
             self.telegram_sends.append((method, form, request.content))
@@ -127,6 +130,7 @@ class TestServiceCycle(unittest.IsolatedAsyncioTestCase):
         reply = json.loads(self.vk_sends[0]['forward'])
         self.assertEqual(reply['conversation_message_ids'], [12])
         self.assertEqual(self.reads[0]['up_to_cmid'], '12')
+        self.assertTrue(any(x[0] == 'setMessageReaction' for x in self.telegram_sends))
         self.assertEqual(self.store.get('tg_offset'), 1235)
         self.assertEqual(self.store.get('vk_cursor'), {'pts': 11})
         sent_text = '\n'.join(x[1].get('text', '') for x in self.telegram_sends)
